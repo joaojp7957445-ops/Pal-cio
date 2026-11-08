@@ -1,0 +1,127 @@
+!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Palácio: Simulador da Presidência</title>
+<style>
+:root{--bg:#f4f1ea;--fg:#1b2227;--card:#fff;--mut:#667;--ac:#0b6b4f;--bad:#b3261e;--bd:#d9d4c7;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1418;--fg:#e8e6df;--card:#172027;--mut:#8b98a1;--ac:#3ecf9a;--bad:#ff6b61;--bd:#2a363f;color-scheme:dark}}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Georgia,"Times New Roman",serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0}.sub{color:var(--mut);font-size:13px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin:12px 0}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.st label{font:12px system-ui,sans-serif;color:var(--mut);display:flex;justify-content:space-between}
+.bar{height:8px;background:var(--bd);border-radius:4px;overflow:hidden;margin-top:3px}.bar i{display:block;height:100%;background:var(--ac);transition:width .5s}
+textarea{width:100%;min-height:90px;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:10px;font:inherit;resize:vertical}
+button{background:var(--ac);color:var(--bg);border:0;border-radius:8px;padding:11px 16px;font:600 15px system-ui,sans-serif;cursor:pointer;margin-top:8px}
+button:disabled{opacity:.5}button.sec{background:transparent;color:var(--mut);border:1px solid var(--bd);margin-left:6px}
+.vote{display:flex;height:22px;border-radius:5px;overflow:hidden;margin:8px 0;font:12px system-ui,sans-serif;color:#fff}
+.vote span{display:flex;align-items:center;justify-content:center}
+.ev{border-left:3px solid var(--bad);padding-left:10px;margin:8px 0}
+.tw{font:14px system-ui,sans-serif;margin:6px 0}.tw b{color:var(--ac)}
+.hd{font-weight:700}.tag{font:12px system-ui,sans-serif;color:var(--mut)}
+.pl i{display:inline-block;width:9px;height:9px;border-radius:50%;margin:1px;background:var(--bd)}.pl .tag{margin-bottom:6px}
+.err{color:var(--bad);font:14px system-ui,sans-serif}
+</style></head><body><main>
+<h1>PALÁCIO</h1><div class="sub">Simulador da Presidência · 48 meses · você escreve, o país responde</div>
+<div class="card stats" id="stats"></div>
+<div class="card" id="play">
+ <div class="tag" id="mes"></div>
+ <p id="evento" class="ev" hidden></p>
+ <textarea id="txt" placeholder="Escreva sua medida com as suas palavras. Ex.: Zerar o imposto de importação do arroz por seis meses."></textarea>
+ <button id="go">Assinar e enviar</button><button class="sec" id="skip">Passar o mês</button>
+ <div class="err" id="err"></div>
+</div>
+<div class="card pl" id="pl" hidden><div class="hd" id="plh">Câmara dos Deputados · em votação</div><div class="tag" id="plc"></div><div id="dots"></div><div class="tag">Cada ponto é um deputado: passe o dedo ou o mouse para ver quem é.</div></div>
+<div id="out"></div>
+<div class="card" id="end" hidden></div>
+<div style="text-align:center"><button class="sec" id="reset">Novo mandato</button></div>
+<p class="sub">Ficção satírica. Partidos, pessoas e perfis são inventados pela IA; textos podem conter erros.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const KEY="palacio_v1";
+const fresh=()=>({m:1,ap:55,eco:50,inf:45,base:45,ev:"",log:[],fim:false});
+let S=fresh(),sample=null,busy=false;
+try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(fresh(),JSON.parse(r))}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const clamp=(v,a=0,b=100)=>Math.max(a,Math.min(b,v));
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+function stats(){
+ const rows=[["Aprovação",S.ap,S.ap+"%"],["Economia",S.eco,S.eco+"/100"],["Inflação",S.inf*2,(S.inf/10).toFixed(1).replace(".",",")+"% a.a. (índice)"],["Base no Congresso",S.base,S.base+"%"]];
+ const box=$("stats");box.replaceChildren();
+ rows.forEach(([n,v,t])=>{const d=el("div","st");const l=el("label");l.append(el("span",0,n),el("span",0,t));const b=el("div","bar");const i=el("i");i.style.width=clamp(v)+"%";b.append(i);d.append(l,b);box.append(d)});
+}
+function head(){
+ const ano=2027+Math.floor((S.m-1)/12),mm=((S.m-1)%12)+1;
+ $("mes").textContent="Mês "+S.m+" de 48 · "+String(mm).padStart(2,"0")+"/"+ano;
+ const e=$("evento");e.hidden=!S.ev;e.textContent=S.ev;
+ $("play").hidden=S.fim;
+}
+function render(){stats();head();$("out").replaceChildren(...S.log.slice(-4).reverse().map(card));if(S.fim)final()}
+function card(r){
+ const c=el("div","card");
+ c.append(el("div","tag","Mês "+r.m+" · "+r.instrumento),el("div","hd",r.titulo||"Medida"));
+ if(r.custo)c.append(el("div","tag","Custo: "+r.custo));
+ if(r.votos){
+  const v=r.votos,vb=el("div","vote");
+  [["sim","#0b6b4f"],["nao","#b3261e"],["abst","#777"]].forEach(([k,col])=>{const s=el("span",0,v[k]>30?v[k]:"");s.style.background=col;s.style.width=(v[k]/513*100)+"%";vb.append(s)});
+  c.append(vb,el("div","tag","Sim "+v.sim+" · Não "+v.nao+" · Abst. "+v.abst+" · "+(r.aprovada?"APROVADA":"REJEITADA")));
+ }else c.append(el("div","tag","Ato do Executivo, sem votação"));
+ if(r.manchete)c.append(el("p",0,"📰 "+r.manchete));
+ (r.internet||[]).forEach(t=>{const d=el("div","tw");d.append(el("b",0,t.quem+" "),document.createTextNode(t.texto));c.append(d)});
+ return c;
+}
+function prompt(txt){
+ return `Você é o motor de um jogo satírico de simulação da Presidência do Brasil (Câmara com 513 deputados, maioria simples 257, PEC exige 308). Estado atual: mês ${S.m}/48, aprovação ${S.ap}%, economia ${S.eco}/100, inflação índice ${S.inf} (50 = 5%), base aliada ${S.base}%. Últimas medidas: ${S.log.slice(-3).map(l=>l.titulo).join("; ")||"nenhuma"}.
+${txt?`O presidente escreveu esta medida: «${txt}»`:"O presidente deixou o mês passar sem nova medida."}
+Julgue com realismo e humor: o instrumento adequado (decreto, MP, PL ou PEC), o custo, o apoio de cada partido da Câmara, de -100 a 100, conforme a posição real de cada partido (decreto não vai a votação: use vota:false), consequências econômicas e políticas, e comentários de perfis de internet INVENTADOS (nunca pessoas reais). Medidas absurdas ou ilegais devem ter consequências ruins. Se for fora do tema do jogo, trate como uma medida inócua.
+Responda SÓ com JSON: {"instrumento":"","titulo":"","custo":"","vota":true,"apoio":{"pl":0,"pt":0,"uniao":0,"pp":0,"mdb":0,"psd":0,"rep":0,"psb":0,"pdt":0,"psol":0,"psdb":0,"pode":0,"novo":0,"ind":0},"efeitos":{"ap":-6..6,"eco":-6..6,"inf":-5..5,"base":-6..6},"manchete":"","internet":[{"quem":"@perfil","texto":""},{"quem":"@perfil","texto":""}],"evento_proximo_mes":"uma crise ou notícia curta para o mês seguinte"}. Se não aprovada, os efeitos devem ser pequenos.`;
+}
+const B=[["pl","PL",99],["pt","PT",68],["uniao","União Brasil",59],["pp","PP",47],["mdb","MDB",42],["psd","PSD",42],["rep","Republicanos",41],["psb","PSB",14],["pdt","PDT",17],["psol","PSOL",12],["psdb","PSDB",13],["pode","Podemos",12],["novo","Novo",3],["ind","Outros",44]];
+const NM=["Ana","Carlos","Marcos","Juliana","Rafael","Beatriz","Paulo","Luciana","Edson","Sandra","Wilson","Marta","Otávio","Cláudia","Heitor","Neide","Ricardo","Aline","Domingos","Telma"],SN=["Silva","Souza","Pereira","Lima","Barros","Almeida","Teixeira","Moura","Cavalcanti","Ferraz","Nogueira","Prado","Bezerra","Macedo","Tavares","Rocha","Dantas","Vieira","Campos","Fonseca"];
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R=rng(2027),D=[];B.forEach(([k,n,c])=>{for(let i=0;i<c;i++)D.push({b:k,bn:n,nome:NM[R()*NM.length|0]+" "+SN[R()*SN.length|0],t:(R()-.5)*70})});
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function votar(r){
+ if(r.vota===false)return null;
+ const pl=$("pl"),box=$("dots");pl.hidden=false;
+ if(!box.children.length)D.forEach(()=>box.append(el("i")));
+ const dots=[...box.children],ap=r.apoio||{},pec=/PEC/i.test(r.instrumento||""),need=pec?308:257;
+ $("plh").textContent="Câmara dos Deputados · "+(r.instrumento||"votação")+(pec?" (exige 308)":" (exige 257)");
+ dots.forEach(d=>{d.style.background="";d.title=""});
+ let s=0,n=0,a=0;const col={s:"#0b6b4f",n:"#b3261e",a:"#777"},nm={s:"Sim",n:"Não",a:"Abstenção"};
+ for(let i=0;i<D.length;i++){
+  const d=D[i],sc=(ap[d.b]||0)+(S.base-50)*.6+d.t,v=sc>15?"s":sc<-15?"n":"a";
+  if(v=="s")s++;else if(v=="n")n++;else a++;
+  dots[i].style.background=col[v];dots[i].title=d.nome+" ("+d.bn+"): "+nm[v];
+  if(i%9==8){$("plc").textContent="Sim "+s+" · Não "+n+" · Abst. "+a;await sleep(30)}
+ }
+ $("plc").textContent="Sim "+s+" · Não "+n+" · Abst. "+a+" — "+(s>=need?"APROVADA":"REJEITADA");
+ await sleep(700);
+ return{sim:s,nao:n,abst:a,ok:s>=need};
+}
+async function turn(txt){
+ if(busy)return;
+ busy=true;$("go").disabled=$("skip").disabled=true;$("err").textContent="O Congresso está votando…";
+ try{
+  const res=await fetch("/api/jogada",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:prompt(txt)})});if(!res.ok)throw{code:res.status};const r=await res.json();
+  const v=await votar(r);r.votos=v;r.aprovada=v?v.ok:true;const k=r.aprovada?1:.3;const f=Object.fromEntries(Object.entries(r.efeitos||{}).map(([a,b])=>[a,Math.round(b*k)]));
+  S.ap=clamp(S.ap+(f.ap|0));S.eco=clamp(S.eco+(f.eco|0));S.inf=clamp(S.inf+(f.inf|0));S.base=clamp(S.base+(f.base|0));
+  S.log.push({m:S.m,instrumento:r.instrumento||"Ato",titulo:r.titulo||txt.slice(0,60)||"Mês sem medida",custo:r.custo,votos:r.votos,aprovada:r.aprovada,manchete:r.manchete,internet:r.internet});
+  S.ev=r.evento_proximo_mes||"";S.m++;
+  if(S.ap<10){S.fim="impeachment"}else if(S.m>48){S.fim="mandato"}
+  $("txt").value="";$("err").textContent="";save();
+ }catch(e){$("err").textContent="Não deu certo desta vez ("+(e&&e.code||"erro")+"). Tente de novo."}
+ busy=false;$("go").disabled=$("skip").disabled=false;render();
+}
+function final(){
+ const nota=Math.round(S.ap*4+S.eco*3+S.base*2-S.inf*3);
+ const c=$("end");c.hidden=false;c.replaceChildren(el("div","hd",S.fim==="impeachment"?"Impeachment. A Câmara abriu o processo.":"Fim do mandato."),el("p",0,"Nota final: "+nota+" pontos (aprovação "+S.ap+"%, economia "+S.eco+", base "+S.base+"%)."));
+}
+$("go").onclick=()=>{const t=$("txt").value.trim();if(!t){$("err").textContent="Escreva uma medida ou use “Passar o mês”.";return}turn(t)};
+$("skip").onclick=()=>turn("");
+$("reset").onclick=()=>{if(confirm("Começar um novo mandato?")){S=fresh();$("end").hidden=true;save();render()}};
+render();
+</script></body></html
